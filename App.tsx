@@ -1,456 +1,457 @@
 
-import React from 'react';
-import { WorkflowModel, WorkItem, Ritual, Team, LevelId, WorkItemType, Connection } from './types';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { WorkflowModel, WorkItem, Ritual, Team, LevelId, WorkItemType, Connection, TeamType, InteractionMode } from './types';
 import { INITIAL_MODEL, ORG_LEVELS } from './constants';
+
+type ViewMode = 'architect' | 'connectivity';
+
+const TYPE_COLORS: Record<string, { border: string, bg: string, text: string, accent: string }> = {
+  'input': { border: 'border-amber-200', bg: 'bg-amber-50', text: 'text-amber-700', accent: 'bg-amber-500' },
+  'team': { border: 'border-indigo-200', bg: 'bg-indigo-50', text: 'text-indigo-700', accent: 'bg-indigo-500' },
+  'ritual': { border: 'border-teal-200', bg: 'bg-teal-50', text: 'text-teal-700', accent: 'bg-teal-500' },
+  'work': { border: 'border-blue-200', bg: 'bg-blue-50', text: 'text-blue-700', accent: 'bg-blue-600' },
+};
 
 const App: React.FC = () => {
   const [model, setModel] = React.useState<WorkflowModel>(INITIAL_MODEL);
   const [selection, setSelection] = React.useState<{ type: 'team' | 'work' | 'ritual', id: string } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('architect');
+  const [highlightedPath, setHighlightedPath] = useState<Set<string>>(new Set());
+  
+  const nodeRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [, forceUpdate] = useState({});
 
-  const selectedTeam = selection?.type === 'team' ? model.teams.find(t => t.id === selection.id) : null;
-  const selectedWork = selection?.type === 'work' ? model.workItems.find(w => w.id === selection.id) : null;
-  const selectedRitual = selection?.type === 'ritual' ? model.rituals.find(r => r.id === selection.id) : null;
+  const selectedItem = useMemo(() => {
+    if (!selection) return null;
+    if (selection.type === 'team') return model.teams.find(t => t.id === selection.id);
+    if (selection.type === 'work') return model.workItems.find(w => w.id === selection.id);
+    if (selection.type === 'ritual') return model.rituals.find(r => r.id === selection.id);
+    return null;
+  }, [selection, model]);
 
-  const updateTeam = (id: string, updates: Partial<Team>) => {
-    setModel(prev => ({ ...prev, teams: prev.teams.map(t => t.id === id ? { ...t, ...updates } : t) }));
-  };
-  const updateWork = (id: string, updates: Partial<WorkItem>) => {
-    setModel(prev => ({ ...prev, workItems: prev.workItems.map(w => w.id === id ? { ...w, ...updates } : w) }));
-  };
-  const updateRitual = (id: string, updates: Partial<Ritual>) => {
-    setModel(prev => ({ ...prev, rituals: prev.rituals.map(r => r.id === id ? { ...r, ...updates } : r) }));
-  };
+  useEffect(() => {
+    if (selection) {
+      const path = new Set<string>();
+      const findPath = (id: string, visited: Set<string>) => {
+        if (visited.has(id)) return;
+        visited.add(id);
+        path.add(id);
+        model.connections.filter(c => c.to === id).forEach(c => findPath(c.from, visited));
+        model.connections.filter(c => c.from === id).forEach(c => findPath(c.to, visited));
+      };
+      findPath(selection.id, new Set());
+      setHighlightedPath(path);
+    } else {
+      setHighlightedPath(new Set());
+    }
+  }, [selection, model.connections]);
 
-  const deleteItem = () => {
-    if (!selection) return;
-    const { type, id } = selection;
-    setModel(prev => ({
-      ...prev,
-      teams: type === 'team' ? prev.teams.filter(t => t.id !== id) : prev.teams,
-      workItems: type === 'work' ? prev.workItems.filter(w => w.id !== id) : prev.workItems,
-      rituals: type === 'ritual' ? prev.rituals.filter(r => r.id !== id) : prev.rituals,
-      connections: prev.connections.filter(c => c.from !== id && c.to !== id)
-    }));
-    setSelection(null);
-  };
+  useLayoutEffect(() => {
+    const timer = setTimeout(() => forceUpdate({}), 100);
+    return () => clearTimeout(timer);
+  }, [viewMode, model, selection]);
 
   const toggleConnection = (fromId: string, toId: string) => {
     const existingIndex = model.connections.findIndex(c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
     if (existingIndex > -1) {
       setModel(prev => ({ ...prev, connections: prev.connections.filter((_, i) => i !== existingIndex) }));
     } else {
-      const newConn: Connection = { id: `c-${Date.now()}`, from: fromId, to: toId, style: 'solid', label: 'Link' };
-      setModel(prev => ({ ...prev, connections: [...prev.connections, newConn] }));
+      setModel(prev => ({ ...prev, connections: [...prev.connections, { id: `c-${Date.now()}`, from: fromId, to: toId, style: 'solid', label: 'Flow' }] }));
     }
   };
 
-  const addNewItem = (type: 'team' | 'work' | 'ritual', level: LevelId, workType: WorkItemType = 'story') => {
-    const id = `${type}-${Date.now()}`;
-    if (type === 'team') {
-      const newTeam: Team = { id, name: 'New Team', members: [], level };
-      setModel(prev => ({ ...prev, teams: [...prev.teams, newTeam] }));
-      setSelection({ type, id });
-    } else if (type === 'work') {
-      const newWork: WorkItem = { id, title: `New ${workType}`, type: workType, level };
-      setModel(prev => ({ ...prev, workItems: [...prev.workItems, newWork] }));
-      setSelection({ type, id });
-    } else if (type === 'ritual') {
-      const newRitual: Ritual = { id, title: 'New Ritual', level, participants: [], agendaItems: [], ritualFrequency: 'Weekly' };
-      setModel(prev => ({ ...prev, rituals: [...prev.rituals, newRitual] }));
-      setSelection({ type, id });
-    }
-  };
-
-  const spawnFromInput = (inputId: string, level: LevelId) => {
-    const id = `work-${Date.now()}`;
-    const type: WorkItemType = level === 'strategic' ? 'initiative' : level === 'portfolio' ? 'epic' : 'story';
-    const newWork: WorkItem = { id, title: `Derived from Input`, type, level };
-    const newConn: Connection = { id: `c-${Date.now()}`, from: inputId, to: id, style: 'solid', label: 'Derived from' };
-    
+  const updateItem = (id: string, updates: any) => {
     setModel(prev => ({
       ...prev,
-      workItems: [...prev.workItems, newWork],
-      connections: [...prev.connections, newConn]
+      teams: prev.teams.map(t => t.id === id ? { ...t, ...updates } : t),
+      workItems: prev.workItems.map(w => w.id === id ? { ...w, ...updates } : w),
+      rituals: prev.rituals.map(r => r.id === id ? { ...r, ...updates } : r)
     }));
-    setSelection({ type: 'work', id });
-  };
-
-  const getEntityName = (id: string) => {
-    return model.teams.find(t => t.id === id)?.name || 
-           model.workItems.find(w => w.id === id)?.title || 
-           model.rituals.find(r => r.id === id)?.title || 
-           'Unknown';
-  };
-
-  const getConnections = (id: string) => {
-    return {
-      upstream: model.connections.filter(c => c.to === id),
-      downstream: model.connections.filter(c => c.from === id)
-    };
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white font-sans text-slate-800">
-      {/* Sidebar - Control & Inspector */}
-      <div className="w-80 h-full border-r flex flex-col z-50 bg-white shadow-xl overflow-y-auto">
-        <div className="p-6 border-b shrink-0">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-xs font-bold shadow-indigo-200 shadow-lg">OF</div>
-            <h1 className="text-xl font-black tracking-tight uppercase">OrgFlow</h1>
-          </div>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Organizational Blueprint</p>
+    <div className="flex h-screen w-screen overflow-hidden font-sans bg-gray-50 text-slate-900">
+      <aside className="w-[340px] h-full border-r bg-white flex flex-col z-50 shadow-sm border-gray-200">
+        <div className="p-6 border-b border-gray-200 flex items-center gap-3 bg-gray-50/50">
+          <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-xl">O</div>
+          <h1 className="text-xl font-bold text-slate-800 tracking-tight">OrgFlow</h1>
         </div>
 
-        <div className="p-6 space-y-8 flex-1">
-          {selection ? (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="flex justify-between items-center">
-                <h2 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-1 flex-1 mr-4">Inspector</h2>
-                <button onClick={deleteItem} className="text-[10px] text-red-500 font-bold hover:underline">Delete</button>
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+          {selection && selectedItem ? (
+            <div className="space-y-7">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Inspector</span>
+                <button onClick={() => setSelection(null)} className="text-gray-400 hover:text-gray-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
 
-              {selectedTeam && (
-                <div className="space-y-4">
-                  <InputField label="Team Name" value={selectedTeam.name} onChange={v => updateTeam(selectedTeam.id, { name: v })} />
-                  <SelectField label="Level" value={selectedTeam.level} options={['strategic', 'portfolio', 'team']} onChange={v => updateTeam(selectedTeam.id, { level: v as LevelId })} />
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Members (CSV)</label>
-                    <input type="text" value={selectedTeam.members.join(', ')} onChange={e => updateTeam(selectedTeam.id, { members: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="w-full text-xs p-3 bg-slate-50 border-none rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-400" />
-                  </div>
+              <div className="space-y-5">
+                <div>
+                   <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Title</label>
+                   <input 
+                    className="w-full bg-white border border-gray-300 rounded-md p-2.5 text-base focus:border-blue-500 outline-none transition-all shadow-sm"
+                    value={(selectedItem as any).name || (selectedItem as any).title} 
+                    onChange={(e) => updateItem(selectedItem.id, { [(selectedItem as any).name ? 'name' : 'title']: e.target.value })}
+                   />
                 </div>
-              )}
 
-              {selectedWork && (
-                <div className="space-y-4">
-                  <InputField label="Title" value={selectedWork.title} onChange={v => updateWork(selectedWork.id, { title: v })} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <SelectField label="Type" value={selectedWork.type} options={['input', 'initiative', 'epic', 'story']} onChange={v => updateWork(selectedWork.id, { type: v as WorkItemType })} />
-                    <SelectField label="Level" value={selectedWork.level} options={['strategic', 'portfolio', 'team']} onChange={v => updateWork(selectedWork.id, { level: v as LevelId })} />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Owner Team</label>
-                    <select value={selectedWork.owningTeamId || ''} onChange={e => updateWork(selectedWork.id, { owningTeamId: e.target.value })} className="w-full text-xs font-bold p-2 bg-slate-50 border-none rounded-lg outline-none focus:ring-2 focus:ring-indigo-400">
-                      <option value="">None</option>
-                      {model.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                  {selectedWork.type === 'input' && (
-                    <button 
-                      onClick={() => spawnFromInput(selectedWork.id, selectedWork.level)}
-                      className="w-full py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-md active:scale-95"
-                    >
-                      Spawn Work Item from Signal
-                    </button>
-                  )}
-                  <ConnectionManager 
-                    id={selectedWork.id} 
-                    model={model} 
-                    onToggle={(to) => toggleConnection(selectedWork.id, to)}
-                    getEntityName={getEntityName}
-                  />
-                </div>
-              )}
+                {selection.type === 'team' && (selectedItem as Team).collaborators && (
+                   <div>
+                     <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Collaboration Context</label>
+                     <div className="space-y-1.5">
+                        {(selectedItem as Team).collaborators?.map((c, i) => (
+                           <div key={i} className="text-sm text-indigo-600 bg-indigo-50 px-2.5 py-1.5 rounded border border-indigo-100">{c}</div>
+                        ))}
+                     </div>
+                   </div>
+                )}
 
-              {selectedRitual && (
-                <div className="space-y-4">
-                  <InputField label="Ritual Title" value={selectedRitual.title} onChange={v => updateRitual(selectedRitual.id, { title: v })} />
-                  <InputField label="Frequency" value={selectedRitual.ritualFrequency} onChange={v => updateRitual(selectedRitual.id, { ritualFrequency: v })} />
-                  <SelectField label="Level" value={selectedRitual.level} options={['strategic', 'portfolio', 'team']} onChange={v => updateRitual(selectedRitual.id, { level: v as LevelId })} />
+                {(selectedItem as any).source && (
+                   <div>
+                     <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Origin / Source</label>
+                     <div className="text-sm font-bold text-amber-700 bg-amber-50 px-3 py-2.5 rounded border border-amber-100">
+                        { (selectedItem as any).source }
+                     </div>
+                   </div>
+                )}
+
+                {(selectedItem as any).owningTeamId && (
                   <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Owning Team</label>
-                    <select value={selectedRitual.owningTeamId || ''} onChange={e => updateRitual(selectedRitual.id, { owningTeamId: e.target.value })} className="w-full text-xs font-bold p-2 bg-slate-50 border-none rounded-lg outline-none focus:ring-2 focus:ring-indigo-400">
-                      <option value="">None</option>
-                      {model.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                    <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Responsible Team</label>
+                    <div className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-2.5 rounded border border-indigo-100">
+                      {model.teams.find(t => t.id === (selectedItem as any).owningTeamId)?.name || 'Unknown Team'}
+                    </div>
                   </div>
-                  <ConnectionManager 
-                    id={selectedRitual.id} 
-                    model={model} 
-                    onToggle={(to) => toggleConnection(selectedRitual.id, to)}
-                    getEntityName={getEntityName}
-                  />
+                )}
+
+                <div>
+                   <label className="text-sm font-semibold text-gray-600 mb-2.5 block">Flow Links</label>
+                   <div className="border rounded divide-y divide-gray-100 max-h-[300px] overflow-y-auto custom-scrollbar bg-gray-50/30">
+                      {[...model.workItems, ...model.rituals].filter(i => i.id !== selection.id).map(target => {
+                        const isConnected = model.connections.some(c => (c.from === selection.id && c.to === target.id) || (c.from === target.id && c.to === selection.id));
+                        return (
+                          <button 
+                            key={target.id}
+                            onClick={() => toggleConnection(selection.id, target.id)}
+                            className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-100 transition-colors ${isConnected ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-600'}`}
+                          >
+                            <span className="truncate">{(target as any).title || (target as any).name}</span>
+                            {isConnected && <span className="text-blue-500 text-xs font-bold uppercase tracking-tighter">Active</span>}
+                          </button>
+                        )
+                      })}
+                   </div>
                 </div>
-              )}
+              </div>
             </div>
           ) : (
-            <div className="pt-12 text-center opacity-40">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 text-center">Select an item in the explorer<br/>to edit details</p>
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-5 opacity-50">
+               <svg className="w-14 h-14 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+               <p className="text-sm text-gray-500 font-medium">Select a node to inspect architecture and flow connections.</p>
             </div>
           )}
         </div>
-      </div>
+      </aside>
 
-      {/* Main View */}
-      <div className="flex-1 h-full flex flex-col overflow-hidden bg-slate-100">
-        <header className="h-16 bg-white border-b px-8 flex items-center justify-between shadow-sm shrink-0 z-10">
-          <h2 className="text-sm font-black uppercase tracking-widest text-slate-500">Organizational Grid</h2>
-          <div className="flex gap-4">
-             <div className="text-[9px] font-black uppercase bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full flex items-center gap-2">
-               <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
-               Architect Mode
-             </div>
-          </div>
+      <div className="flex-1 h-full flex flex-col relative overflow-hidden">
+        <header className="h-16 bg-white px-8 flex items-center justify-between z-40 border-b border-gray-200 shadow-sm">
+           <nav className="flex items-center gap-10">
+              <div className="flex gap-2 items-baseline">
+                 <span className="text-sm font-bold text-gray-400 uppercase tracking-tighter">Project</span>
+                 <span className="text-base font-semibold text-slate-800">Operational Topology</span>
+              </div>
+              <div className="h-5 w-px bg-gray-200" />
+              <div className="flex gap-8">
+                 <button 
+                   onClick={() => setViewMode('architect')} 
+                   className={`text-sm font-bold pb-5 -mb-5 transition-all border-b-2 tracking-tight ${viewMode === 'architect' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                 >
+                   Architect
+                 </button>
+                 <button 
+                   onClick={() => setViewMode('connectivity')} 
+                   className={`text-sm font-bold pb-5 -mb-5 transition-all border-b-2 tracking-tight ${viewMode === 'connectivity' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                 >
+                   Connectivity
+                 </button>
+              </div>
+           </nav>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-12">
-          {ORG_LEVELS.map(level => {
-            const levelInputs = model.workItems.filter(w => w.level === level.id && w.type === 'input');
-            const levelWork = model.workItems.filter(w => w.level === level.id && w.type !== 'input');
-            const levelRituals = model.rituals.filter(r => r.level === level.id);
-            const levelTeams = model.teams.filter(t => t.level === level.id);
+        <main className={`flex-1 overflow-auto p-12 transition-all duration-300 custom-scrollbar ${viewMode === 'connectivity' ? 'canvas-grid' : ''}`}>
+          <div className="relative min-w-[1600px] space-y-20">
+            
+            {viewMode === 'connectivity' && <ConnectivitySVG model={model} nodeRefs={nodeRefs} highlightedPath={highlightedPath} selection={selection} />}
 
-            return (
-              <section key={level.id} className="bg-white rounded-[2rem] p-10 shadow-sm border border-slate-200 relative">
-                <div className="flex items-center justify-between mb-10">
-                  <div className="flex items-center gap-4">
-                    <span className={`w-3 h-3 rounded-full ${level.id === 'strategic' ? 'bg-red-400' : level.id === 'portfolio' ? 'bg-purple-400' : 'bg-blue-400'}`} />
-                    <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">{level.label} Level</h2>
-                  </div>
-                  <div className="flex gap-4">
-                    <button onClick={() => addNewItem('work', level.id, 'input')} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors">+ Add Input</button>
-                    <button onClick={() => addNewItem('team', level.id)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors">+ Add Team</button>
-                    <button onClick={() => addNewItem('ritual', level.id)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors">+ Add Ritual</button>
-                    <button onClick={() => addNewItem('work', level.id, 'initiative')} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors">+ Add Work</button>
-                  </div>
+            {ORG_LEVELS.map(level => (
+              <LevelGrid 
+                key={level.id} 
+                level={level} 
+                model={model} 
+                viewMode={viewMode} 
+                selection={selection} 
+                setSelection={setSelection} 
+                nodeRefs={nodeRefs} 
+                highlightedPath={highlightedPath}
+              />
+            ))}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+const LevelGrid: React.FC<any> = ({ level, model, viewMode, selection, setSelection, nodeRefs, highlightedPath }) => {
+  const pillars = [
+    { label: 'Inputs (Why)', items: model.workItems.filter((w: any) => w.level === level.id && w.type === 'input'), type: 'input' },
+    { label: 'Teams (Who)', items: model.teams.filter((t: any) => t.level === level.id), type: 'team' },
+    { label: 'Rituals (How)', items: model.rituals.filter((r: any) => r.level === level.id), type: 'ritual' },
+    { label: 'Work (What)', items: model.workItems.filter((w: any) => w.level === level.id && w.type !== 'input'), type: 'work' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center gap-5">
+         <span className={`w-4 h-4 rounded-full ${level.id === 'strategic' ? 'bg-red-400' : level.id === 'portfolio' ? 'bg-purple-400' : 'bg-blue-400'}`} />
+         <h2 className="text-sm font-black text-gray-500 uppercase tracking-[0.2em]">{level.label} Tier</h2>
+         <div className="h-px flex-1 bg-gray-200" />
+      </div>
+
+      <div className="grid grid-cols-4 gap-8">
+        {pillars.map(pillar => (
+          <div key={pillar.label} className="bg-gray-200/30 rounded-xl p-6 space-y-5 min-h-[180px] border border-gray-200/50">
+            <h3 className="text-xs font-black uppercase text-gray-400 tracking-widest">{pillar.label}</h3>
+            <div className="space-y-5">
+              {pillar.items.map((item: any) => (
+                <JiraCard 
+                  key={item.id} 
+                  item={item} 
+                  type={pillar.type} 
+                  isSelected={selection?.id === item.id}
+                  isHighlighted={highlightedPath.size === 0 || highlightedPath.has(item.id)}
+                  onSelect={() => setSelection({ type: pillar.type as any, id: item.id })}
+                  nodeRef={(el: any) => nodeRefs.current[item.id] = el}
+                  viewMode={viewMode}
+                  model={model}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const JiraCard: React.FC<any> = ({ item, type, isSelected, isHighlighted, onSelect, nodeRef, viewMode, model }) => {
+  const color = TYPE_COLORS[type] || TYPE_COLORS.work;
+  const owningTeam = item.owningTeamId ? model.teams.find((t: any) => t.id === item.owningTeamId) : null;
+
+  return (
+    <div 
+      ref={nodeRef}
+      onClick={onSelect}
+      className={`bg-white border rounded-lg shadow-sm transition-all duration-200 cursor-pointer flex flex-col relative overflow-hidden
+        ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 border-blue-400 z-10' : 'border-gray-200 hover:border-gray-300 hover:shadow-md'} 
+        ${!isHighlighted && viewMode === 'connectivity' ? 'opacity-20 grayscale' : 'opacity-100'}
+        w-full
+      `}
+    >
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${color.accent}`} />
+
+      <div className="p-5 pl-6 space-y-5">
+        {/* Card Header */}
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex flex-col min-w-0">
+            <span className="text-base font-semibold text-slate-800 leading-tight">
+              {item.name || item.title}
+            </span>
+          </div>
+          <div className={`text-xs font-black uppercase px-2.5 py-1 rounded-md whitespace-nowrap ${color.bg} ${color.text}`}>
+             {item.type || type}
+          </div>
+        </div>
+
+        {/* Detailed Body based on type */}
+        <div className="space-y-4">
+          {type === 'team' ? (
+            <div className="space-y-4">
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2.5 text-xs text-gray-400 font-bold uppercase tracking-widest">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                  Personnel
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 xl:gap-8">
-                  {/* Pillar 1: Inputs */}
-                  <div className="space-y-6">
-                    <h3 className="text-[11px] font-black text-amber-500 uppercase tracking-[0.2em] border-b border-amber-100 pb-2 flex items-center justify-between">
-                      <span>Inputs (Signals)</span>
-                      <span className="text-amber-300 font-bold">{levelInputs.length}</span>
-                    </h3>
-                    <div className="space-y-4">
-                      {levelInputs.map(input => (
-                        <CardWrapper 
-                          key={input.id} 
-                          id={input.id} 
-                          selected={selection?.id === input.id} 
-                          onClick={() => setSelection({ type: 'work', id: input.id })}
-                          type="input"
-                          connections={getConnections(input.id)}
-                          getEntityName={getEntityName}
-                        >
-                          <div className="flex justify-between items-start mb-1">
-                            <div className="text-[8px] font-black text-amber-600 uppercase">Signal</div>
-                            {getConnections(input.id).downstream.length > 0 && (
-                              <div className="text-[8px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full animate-bounce">
-                                Spawning {getConnections(input.id).downstream.length}
-                              </div>
-                            )}
-                          </div>
-                          <h4 className="font-bold text-xs text-slate-800 leading-snug">{input.title}</h4>
-                        </CardWrapper>
-                      ))}
-                      {levelInputs.length === 0 && <EmptyState text="No Inputs" />}
-                    </div>
-                  </div>
-
-                  {/* Pillar 2: Who (Teams) */}
-                  <div className="space-y-6">
-                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2 flex items-center justify-between">
-                      <span>Who (Teams)</span>
-                      <span className="text-slate-300 font-bold">{levelTeams.length}</span>
-                    </h3>
-                    <div className="space-y-4">
-                      {levelTeams.map(team => (
-                        <div 
-                          key={team.id} 
-                          onClick={() => setSelection({ type: 'team', id: team.id })} 
-                          className={`p-5 bg-slate-50 rounded-2xl border-2 transition-all cursor-pointer hover:bg-white hover:shadow-lg ${selection?.id === team.id ? 'border-indigo-500 bg-white ring-4 ring-indigo-50 shadow-md' : 'border-transparent'}`}
-                        >
-                          <h4 className="font-bold text-sm text-slate-800">{team.name}</h4>
-                          <p className="text-[10px] text-slate-400 mt-2 font-medium leading-relaxed">
-                            {team.members.length} Members
-                          </p>
-                        </div>
-                      ))}
-                      {levelTeams.length === 0 && <EmptyState text="No Teams" />}
-                    </div>
-                  </div>
-
-                  {/* Pillar 3: How (Rituals) */}
-                  <div className="space-y-6">
-                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2 flex items-center justify-between">
-                      <span>How (Rituals)</span>
-                      <span className="text-slate-300 font-bold">{levelRituals.length}</span>
-                    </h3>
-                    <div className="space-y-4">
-                      {levelRituals.map(ritual => {
-                         const conns = getConnections(ritual.id);
-                         return (
-                          <div 
-                            key={ritual.id} 
-                            onClick={() => setSelection({ type: 'ritual', id: ritual.id })} 
-                            className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col transition-all cursor-pointer hover:shadow-xl ${selection?.id === ritual.id ? 'border-indigo-500 ring-4 ring-indigo-50 scale-[1.02]' : 'border-slate-100'}`}
-                          >
-                            <div className="bg-slate-50 px-4 py-2 border-b flex justify-between items-center">
-                              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-tight">{ritual.title}</span>
-                            </div>
-                            <div className="flex divide-x divide-slate-100 min-h-[90px]">
-                              <div className="flex-1 p-3 space-y-1">
-                                {ritual.agendaItems.map((item, i) => (
-                                  <div key={i} className="text-[9px] text-slate-600 leading-tight flex gap-1.5">
-                                    <span className="text-slate-300">•</span> {item}
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex-1 p-3 space-y-1 bg-slate-50/30">
-                                {ritual.participants.map((p, i) => (
-                                  <div key={i} className="text-[9px] text-indigo-700 font-bold leading-tight uppercase tracking-tighter">{p}</div>
-                                ))}
-                              </div>
-                            </div>
-                            <ConnectionBadges connections={conns} getEntityName={getEntityName} />
-                            <div className="px-4 py-1.5 bg-white border-t text-[8px] font-black text-slate-300 uppercase tracking-widest flex justify-between">
-                              <span>{ritual.ritualFrequency}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {levelRituals.length === 0 && <EmptyState text="No Rituals" />}
-                    </div>
-                  </div>
-
-                  {/* Pillar 4: What (Work Items) */}
-                  <div className="space-y-6">
-                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2 flex items-center justify-between">
-                      <span>What (Work)</span>
-                      <span className="text-slate-300 font-bold">{levelWork.length}</span>
-                    </h3>
-                    <div className="space-y-4">
-                      {levelWork.map(work => (
-                        <CardWrapper 
-                          key={work.id} 
-                          id={work.id} 
-                          selected={selection?.id === work.id} 
-                          onClick={() => setSelection({ type: 'work', id: work.id })}
-                          type="work"
-                          connections={getConnections(work.id)}
-                          getEntityName={getEntityName}
-                        >
-                          <div>
-                            <span className="text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter mb-2 inline-block bg-slate-100 text-slate-500">{work.type}</span>
-                            <h4 className="font-bold text-sm text-slate-900 leading-snug">{work.title}</h4>
-                          </div>
-                          {work.owningTeamId && (
-                            <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between">
-                               <span className="text-[8px] font-black text-slate-300 uppercase">Accountable</span>
-                               <span className="text-[8px] font-bold text-slate-600 uppercase bg-slate-100 px-2 py-0.5 rounded-full truncate max-w-[80px]">{model.teams.find(t => t.id === work.owningTeamId)?.name}</span>
-                            </div>
-                          )}
-                        </CardWrapper>
-                      ))}
-                      {levelWork.length === 0 && <EmptyState text="No Work Items" />}
-                    </div>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  {item.members.map((m: string) => (
+                    <span key={m} className="bg-gray-50 px-2.5 py-1 rounded border border-gray-200 text-xs font-medium text-gray-600 shadow-sm">{m}</span>
+                  ))}
                 </div>
-              </section>
-            );
-          })}
+              </div>
+
+              {item.collaborators && item.collaborators.length > 0 && (
+                 <div className="space-y-2.5 border-t border-gray-100 pt-3">
+                    <div className="flex items-center gap-2.5 text-xs text-gray-400 font-bold uppercase tracking-widest">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      Collaboration Partners
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                       {item.collaborators.map((c: string) => (
+                          <span key={c} className="bg-indigo-50/50 px-2.5 py-1 rounded border border-indigo-100 text-xs font-bold text-indigo-500 whitespace-nowrap">
+                             {c}
+                          </span>
+                       ))}
+                    </div>
+                 </div>
+              )}
+              
+              <div className="text-xs text-indigo-400 font-bold uppercase tracking-widest mt-1 border-t border-gray-50 pt-2">{item.teamType || 'Core Squad'}</div>
+            </div>
+          ) : type === 'ritual' ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                 <div className="flex items-center gap-2.5 text-xs text-gray-400 font-bold uppercase tracking-widest mb-1.5">
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                   Agenda Focus
+                 </div>
+                 {item.agendaItems.map((ai: string, idx: number) => (
+                   <div key={idx} className="text-sm text-slate-600 pl-2.5 border-l-2 border-teal-100 py-1 leading-tight">{ai}</div>
+                 ))}
+              </div>
+              <div className="space-y-2">
+                 <div className="flex items-center gap-2.5 text-xs text-gray-400 font-bold uppercase tracking-widest mb-1.5">
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                   Key Roles
+                 </div>
+                 <div className="flex flex-wrap gap-2">
+                   {item.participants.map((p: string) => (
+                     <span key={p} className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100"> {p} </span>
+                   ))}
+                 </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500 leading-relaxed italic">
+                {item.description || 'Definition of the work stream, operational focus, or signal metrics.'}
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                {item.status && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.status}</span>
+                  </div>
+                )}
+                {item.source && (
+                  <div className="flex items-center gap-2 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                    <svg className="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-tight">Source: {item.source}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Card Footer */}
+        <div className="pt-4 flex items-center justify-between border-t border-gray-100 bg-gray-50/20 -mx-5 -mb-5 p-4 pl-5">
+           <div className="flex items-center gap-3 overflow-hidden">
+              {item.ritualFrequency && (
+                <div className="flex items-center gap-1.5 text-xs font-bold text-gray-400 whitespace-nowrap">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  {item.ritualFrequency}
+                </div>
+              )}
+              {owningTeam && (
+                <div className="flex items-center gap-2 overflow-hidden">
+                   <div className="w-4 h-4 rounded bg-indigo-100 flex-shrink-0 flex items-center justify-center text-[8px] font-black text-indigo-600 border border-indigo-200">T</div>
+                   <span className="text-xs font-bold text-indigo-400 uppercase truncate" title={`Owned by ${owningTeam.name}`}>
+                     {owningTeam.name}
+                   </span>
+                </div>
+              )}
+           </div>
+           <div className="flex items-center gap-1.5 text-xs font-bold text-gray-300 ml-3">
+             <span className="uppercase tracking-widest">{item.level}</span>
+           </div>
         </div>
       </div>
     </div>
   );
 };
 
-const ConnectionBadges: React.FC<{ 
-  connections: { upstream: Connection[], downstream: Connection[] }, 
-  getEntityName: (id: string) => string 
-}> = ({ connections, getEntityName }) => {
-  if (connections.upstream.length === 0 && connections.downstream.length === 0) return null;
+const ConnectivitySVG: React.FC<any> = ({ model, nodeRefs, highlightedPath, selection }) => {
+  const [paths, setPaths] = useState<React.ReactNode[]>([]);
+
+  useEffect(() => {
+    const update = () => {
+      const newPaths: React.ReactNode[] = [];
+      model.connections.forEach(conn => {
+        const fromEl = nodeRefs.current[conn.from];
+        const toEl = nodeRefs.current[conn.to];
+        if (!fromEl || !toEl) return;
+
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+        const container = fromEl.closest('.overflow-auto');
+        if (!container) return;
+        const containerRect = container.getBoundingClientRect();
+
+        const x1 = fromRect.left + fromRect.width / 2 - containerRect.left + container.scrollLeft;
+        const y1 = fromRect.top + fromRect.height / 2 - containerRect.top + container.scrollTop;
+        const x2 = toRect.left + toRect.width / 2 - containerRect.left + container.scrollLeft;
+        const y2 = toRect.top + toRect.height / 2 - containerRect.top + container.scrollTop;
+
+        const isHighlighted = highlightedPath.size > 0 && highlightedPath.has(conn.from) && highlightedPath.has(conn.to);
+        const strokeColor = isHighlighted ? '#3b82f6' : '#94a3b8';
+        const strokeWidth = isHighlighted ? 3 : 1;
+        const opacity = highlightedPath.size > 0 ? (isHighlighted ? 1 : 0.05) : 0.4;
+
+        // Subtle curve for connection lines
+        const dy = y2 - y1;
+        const cpOffset = Math.min(Math.abs(dy) * 0.5, 300);
+        const pathD = `M ${x1} ${y1} C ${x1} ${y1 + (dy > 0 ? cpOffset : -cpOffset)}, ${x2} ${y2 - (dy > 0 ? cpOffset : -cpOffset)}, ${x2} ${y2}`;
+
+        newPaths.push(
+          <g key={conn.id}>
+            <path 
+              d={pathD} 
+              fill="none" 
+              stroke={strokeColor} 
+              strokeWidth={strokeWidth} 
+              strokeDasharray={conn.style === 'dashed' ? '4,4' : 'none'}
+              markerEnd={`url(#arrow-${isHighlighted ? 'active' : 'idle'})`}
+              style={{ opacity, transition: 'all 0.3s' }}
+            />
+            {isHighlighted && (
+              <circle r="4" fill="#3b82f6" className="animate-pulse">
+                <animateMotion dur="2.5s" repeatCount="indefinite" path={pathD} />
+              </circle>
+            )}
+          </g>
+        );
+      });
+      setPaths(newPaths);
+    };
+
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [model, highlightedPath, selection]);
+
   return (
-    <div className="px-3 py-1.5 bg-slate-50 border-t flex flex-wrap gap-1">
-      {connections.upstream.map(c => (
-        <span key={c.id} title={`Source: ${getEntityName(c.from)}`} className="text-[7px] font-bold uppercase bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-400 truncate max-w-[120px]">
-          ↑ {getEntityName(c.from)}
-        </span>
-      ))}
-      {connections.downstream.map(c => (
-        <span key={c.id} title={`Target: ${getEntityName(c.to)}`} className="text-[7px] font-bold uppercase bg-white border border-slate-200 px-1.5 py-0.5 rounded text-indigo-400 truncate max-w-[120px]">
-          ↓ {getEntityName(c.to)}
-        </span>
-      ))}
-    </div>
+    <svg className="absolute top-0 left-0 w-[5000px] h-[5000px] pointer-events-none z-10 overflow-visible">
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+        </marker>
+        <marker id="arrow-active" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+        </marker>
+      </defs>
+      {paths}
+    </svg>
   );
 };
-
-const CardWrapper: React.FC<{ 
-  id: string, 
-  selected: boolean, 
-  onClick: () => void, 
-  children: React.ReactNode, 
-  type: 'input' | 'work', 
-  connections: { upstream: Connection[], downstream: Connection[] }, 
-  getEntityName: (id: string) => string 
-}> = ({ id, selected, onClick, children, type, connections, getEntityName }) => {
-  const baseClasses = `p-4 rounded-2xl border-2 transition-all cursor-pointer hover:shadow-xl ${selected ? 'ring-4 ring-indigo-50 scale-[1.02]' : 'border-slate-100'}`;
-  const typeClasses = type === 'input' 
-    ? (selected ? 'border-amber-400 bg-white ring-amber-50' : 'bg-amber-50/50 border-transparent')
-    : (selected ? 'border-indigo-500 bg-white' : 'bg-white border-slate-100');
-    
-  return (
-    <div onClick={onClick} className={`${baseClasses} ${typeClasses}`}>
-      <div className="mb-2">{children}</div>
-      <ConnectionBadges connections={connections} getEntityName={getEntityName} />
-    </div>
-  );
-};
-
-const ConnectionManager: React.FC<{ 
-  id: string, 
-  model: WorkflowModel, 
-  onToggle: (id: string) => void, 
-  getEntityName: (id: string) => string 
-}> = ({ id, model, onToggle, getEntityName }) => {
-  const potentialTargets = [
-    ...model.workItems.filter(w => w.id !== id),
-    ...model.rituals.filter(r => r.id !== id)
-  ];
-
-  return (
-    <div className="space-y-2 mt-4 pt-4 border-t">
-      <label className="text-[9px] font-black text-slate-400 uppercase block">Connections & Links</label>
-      <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
-        {potentialTargets.map(target => {
-          const isConnected = model.connections.some(c => (c.from === id && c.to === target.id) || (c.from === target.id && c.to === id));
-          return (
-            <button 
-              key={target.id} 
-              onClick={() => onToggle(target.id)}
-              className={`text-[10px] text-left p-2 rounded-lg transition-colors flex items-center justify-between ${isConnected ? 'bg-indigo-600 text-white font-bold' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-            >
-              <span className="truncate">{target.title}</span>
-              {isConnected && <span>✓</span>}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const EmptyState: React.FC<{ text: string }> = ({ text }) => (
-  <div className="py-8 text-center border-2 border-dashed border-slate-100 rounded-2xl text-slate-300 font-bold uppercase text-[9px] tracking-widest">
-    {text}
-  </div>
-);
-
-const InputField: React.FC<{ label: string, value: string, onChange: (v: string) => void }> = ({ label, value, onChange }) => (
-  <div>
-    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">{label}</label>
-    <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-full text-sm font-bold p-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none" />
-  </div>
-);
-
-const SelectField: React.FC<{ label: string, value: string, options: string[], onChange: (v: string) => void }> = ({ label, value, options, onChange }) => (
-  <div>
-    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">{label}</label>
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full text-xs font-bold p-2 bg-slate-50 border-none rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none">
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
-  </div>
-);
 
 export default App;

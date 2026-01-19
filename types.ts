@@ -10,11 +10,17 @@ export interface OrgLevel {
 
 export type WorkItemType = 'initiative' | 'epic' | 'story' | 'input';
 
+// Team Topologies Types
+export type TeamType = 'stream-aligned' | 'enabling' | 'complicated-subsystem' | 'platform';
+export type InteractionMode = 'collaboration' | 'x-as-a-service' | 'facilitating';
+
 export interface Team {
   id: string;
   name: string;
   members: string[];
   level: LevelId;
+  teamType?: TeamType;
+  collaborators?: string[]; // Supporting functions, external consultants, etc.
 }
 
 export interface Ritual {
@@ -36,14 +42,16 @@ export interface WorkItem {
   description?: string;
   owningTeamId?: string; 
   status?: 'backlog' | 'in-progress' | 'done';
+  source?: string; // Origin of the input (e.g., "Market Trends", "Strategic Tier", "Customer Support")
 }
 
 export interface Connection {
   id: string;
-  from: string; // ID of WorkItem or Ritual
-  to: string;   // ID of WorkItem or Ritual
+  from: string; // ID of WorkItem, Ritual, or Team
+  to: string;   // ID of WorkItem, Ritual, or Team
   label?: string;
   style: 'solid' | 'dashed';
+  interactionMode?: InteractionMode; // For team-to-team connections
 }
 
 export interface WorkflowModel {
