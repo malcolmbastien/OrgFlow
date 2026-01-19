@@ -1,0 +1,7 @@
+{
+  "name": "OrgFlow Modeler",
+  "description": "A professional tool for modeling organizational work flows through the network of meetings, roles, and information cycles.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
