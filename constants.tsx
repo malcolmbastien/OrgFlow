@@ -36,13 +36,13 @@ export const INITIAL_MODEL: WorkflowModel = {
     },
   ],
   workItems: [
-    { id: 'w1', title: 'EU AI Act Compliance', type: 'input', level: 'strategic', source: 'Regulation (External)' },
-    { id: 'w2', title: 'Competitor X Series C', type: 'input', level: 'strategic', source: 'Market Trends' },
-    { id: 'w3', title: 'Carbon Neutrality 2026', type: 'input', level: 'portfolio', source: 'Strategic Directive', description: 'Mandate filtered down from ESG Strategy' },
-    { id: 'w4', title: 'Scale to 1M Users', type: 'input', level: 'team', source: 'Portfolio Roadmap' },
-    { id: 'w5', title: 'Latency Complaints', type: 'input', level: 'team', source: 'Customer Support' },
-    { id: 'board_port', title: 'Portfolio Board', type: 'epic', level: 'portfolio', description: 'Central tracker for all cross-team initiatives', owningTeamId: 't2' },
-    { id: 'board_team', title: 'Team Jira Board', type: 'story', level: 'team', description: 'Active development sprint board', owningTeamId: 't3' },
+    { id: 'w1', title: 'Regulatory Feed (EU)', type: 'input', level: 'strategic', source: 'External' },
+    { id: 'w2', title: 'Market Analysis Stream', type: 'input', level: 'strategic', source: 'Market' },
+    { id: 'w3', title: 'Strategic Mandates', type: 'input', level: 'portfolio', source: 'Internal', description: 'Mandates filtered down from Strategy' },
+    { id: 'w4', title: 'Portfolio Roadmap Feed', type: 'input', level: 'team', source: 'Portfolio' },
+    { id: 'w5', title: 'Customer Support Signals', type: 'input', level: 'team', source: 'Direct Feedback' },
+    { id: 'board_port', title: 'Portfolio Board', type: 'epic', level: 'portfolio', description: 'Central tracker for initiatives', owningTeamId: 't2' },
+    { id: 'board_team', title: 'Team Jira Board', type: 'story', level: 'team', description: 'Active development board', owningTeamId: 't3' },
   ],
   rituals: [
     { 
@@ -50,7 +50,7 @@ export const INITIAL_MODEL: WorkflowModel = {
       title: 'Portfolio Review', 
       level: 'portfolio', 
       participants: ['VPs', 'Directors', 'Scrum Masters'],
-      agendaItems: ['Review releases', 'Review portfolio impacts', 'Risk assessment'],
+      agendaItems: ['Review releases', 'Risk assessment'],
       ritualFrequency: 'Weekly',
       owningTeamId: 't2'
     },
@@ -58,27 +58,15 @@ export const INITIAL_MODEL: WorkflowModel = {
       id: 'r_standup', 
       title: 'Daily Standup', 
       level: 'team', 
-      participants: ['Team', 'Scrum Master'],
-      agendaItems: ['Review blockers', 'Yesterday/Today', 'Help needed'],
+      participants: ['Team Members', 'Scrum Master'],
+      agendaItems: ['Review blockers', 'Help needed'],
       ritualFrequency: 'Daily',
       owningTeamId: 't3'
     },
-    { 
-      id: 'r_demo', 
-      title: 'Sprint Demo', 
-      level: 'team', 
-      participants: ['Team', 'Stakeholders'],
-      agendaItems: ['Showcase work', 'Gather feedback'],
-      ritualFrequency: 'Bi-weekly',
-      owningTeamId: 't3'
-    }
   ],
   connections: [
-    { id: 'c1', from: 'w1', to: 'board_port', label: 'Flows to', style: 'solid' }, 
-    { id: 'c2', from: 'board_port', to: 'r_port_rev', label: 'Governed by', style: 'solid' }, 
-    { id: 'c3', from: 'r_port_rev', to: 'board_team', label: 'Decomposes to', style: 'solid' },
-    { id: 'c4', from: 'board_team', to: 'r_standup', label: 'Processes', style: 'solid' },
-    { id: 'c5', from: 'r_standup', to: 'r_demo', label: 'Progresses to', style: 'dashed' },
+    { id: 'c1', from: 'w1', to: 'board_port', style: 'solid' }, 
+    { id: 'c2', from: 'board_port', to: 'r_port_rev', style: 'solid' }, 
     { id: 'c6', from: 'w3', to: 'board_port', style: 'solid' },
     { id: 'c7', from: 'w4', to: 'board_team', style: 'solid' },
   ]
