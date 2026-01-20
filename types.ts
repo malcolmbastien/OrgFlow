@@ -42,7 +42,6 @@ export interface WorkItem {
   description?: string;
   owningTeamId?: string; 
   status?: 'backlog' | 'in-progress' | 'done';
-  source?: string; // Origin of the input (e.g., "Market Trends", "Strategic Tier", "Customer Support")
 }
 
 export interface Connection {

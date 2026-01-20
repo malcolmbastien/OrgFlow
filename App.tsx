@@ -2,7 +2,6 @@
 import React, { useState, useMemo } from 'react';
 import { WorkflowModel, Team, LevelId, Connection, Ritual, WorkItem } from './types';
 import { INITIAL_MODEL, ORG_LEVELS } from './constants';
-import { generateOrgFlow } from './services/geminiService';
 
 type ViewMode = 'architect' | 'connectivity';
 type PillarType = 'input' | 'team' | 'ritual' | 'work';
@@ -153,10 +152,9 @@ const App: React.FC = () => {
       const isInput = pillar === 'input';
       const newItem: WorkItem = { 
         id, 
-        title: isInput ? 'New Stable Source' : 'New Initiative', 
+        title: isInput ? 'New Work Source' : 'New Initiative', 
         type: isInput ? 'input' : 'initiative', 
         level: levelId, 
-        source: isInput ? 'Internal' : undefined 
       };
       setModel(prev => ({ ...prev, workItems: [...prev.workItems, newItem] }));
       setSelection({ type: isInput ? 'input' : 'work', id });
@@ -196,17 +194,6 @@ const App: React.FC = () => {
                    />
                 </div>
 
-                {selection.type === 'input' && (
-                  <div>
-                    <label className="text-[11px] font-bold text-[#5E6C84] mb-1.5 block uppercase tracking-wider">Origin Feed Type</label>
-                    <input 
-                      className="w-full bg-[#FAFBFC] border border-[#DFE1E6] rounded p-2.5 text-sm font-medium text-[#172B4D] focus:bg-white focus:border-[#4C9AFF] outline-none transition-all shadow-sm"
-                      value={(selectedItem as any).source || ''} 
-                      onChange={(e) => updateItem(selectedItem.id, { source: e.target.value })}
-                    />
-                  </div>
-                )}
-
                 {(selection.type === 'team' || selection.type === 'ritual') && (
                   <div className="space-y-3">
                     <label className="text-[11px] font-bold text-[#5E6C84] block uppercase tracking-wider">
@@ -235,7 +222,7 @@ const App: React.FC = () => {
 
                 <div>
                    <label className="text-[11px] font-bold text-[#5E6C84] mb-1.5 block uppercase tracking-wider">Description</label>
-                   <textarea className="w-full bg-[#FAFBFC] border border-[#DFE1E6] rounded p-2.5 text-sm font-medium text-[#172B4D] focus:bg-white focus:border-[#4C9AFF] h-24 resize-none shadow-sm" value={(selectedItem as any).description || ''} onChange={(e) => updateItem(selectedItem.id, { description: e.target.value })} />
+                   <textarea className="w-full bg-[#FAFBFC] border border-[#DFE1E6] rounded p-2.5 text-sm font-medium text-[#172B4D] focus:bg-white focus:border-[#4C9AFF] h-24 resize-none shadow-sm" value={(selectedItem as any).description || ''} onChange={(e) => updateItem(selectedItem.id, { description: e.target.value })} placeholder="Describe the structural purpose..." />
                 </div>
 
                 <div className="pt-4 border-t border-[#EBECF0] space-y-6">
@@ -276,7 +263,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="bg-[#EBECF0] p-1 rounded-md flex gap-1">
                       {(['team', 'ritual', 'input', 'work'] as TargetCategory[]).map(tab => (
-                        <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 text-[9px] font-black uppercase py-1.5 rounded transition-all ${activeTab === tab ? 'bg-white text-[#0052CC] shadow-sm' : 'text-[#5E6C84]'}`}>{tab}s</button>
+                        <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 text-[9px] font-black uppercase py-1.5 rounded transition-all ${activeTab === tab ? 'bg-white text-[#0052CC] shadow-sm' : 'text-[#5E6C84]'}`}>{tab === 'input' ? 'Sources' : tab + 's'}</button>
                       ))}
                     </div>
                     <div className="max-h-72 overflow-y-auto border border-[#DFE1E6] rounded bg-white shadow-inner custom-scrollbar">
@@ -294,7 +281,7 @@ const App: React.FC = () => {
                                     <div key={target.id} className="group w-full flex items-center justify-between p-2 hover:bg-[#F4F5F7] rounded-md border border-transparent">
                                       <div className="flex items-center gap-2 min-w-0 flex-1">
                                         <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${TIER_DOT_COLORS[target.level]}`} />
-                                        <span className="text-[11px] font-semibold text-[#172B4D] uppercase truncate">{target.name}</span>
+                                        <span className="text-[11px] font-semibold text-[#172B4D] uppercase truncate leading-none">{target.name}</span>
                                       </div>
                                       <button onClick={() => toggleConnection(target.id)} className={`ml-2 px-2 py-1 rounded text-[9px] font-black uppercase transition-all shadow-sm ${isConnected ? 'bg-[#36B37E]/20 text-[#36B37E] border border-[#36B37E]/40' : 'bg-[#0052CC] text-white hover:bg-[#0747A6]'}`}>
                                         {isConnected ? 'Linked' : 'Link'}
@@ -381,7 +368,7 @@ const ConnectivityDiagram: React.FC<any> = ({ model, selection, setSelection }) 
           <div key={n.id} onClick={() => setSelection({ type: n.type as any, id: n.id })} style={{ left: n.x, top: n.y, width: n.width, height: n.height }} className={`absolute bg-white border rounded shadow-sm flex flex-col overflow-hidden cursor-pointer transition-all ${selection?.id === n.id ? 'border-[#0052CC] ring-2 ring-[#0052CC]/10 z-10' : 'border-[#DFE1E6] hover:bg-[#FAFBFC]'}`}>
             <div className={`absolute left-0 top-0 bottom-0 w-1 ${color.accent}`} />
             <div className="flex-1 p-3 pl-4 flex flex-col justify-between">
-              <div className="flex justify-between items-start gap-2"><h4 className="text-xs font-bold text-[#172B4D] uppercase">{n.item.name || n.item.title}</h4><div className={`text-[9px] font-black uppercase px-1 py-0.5 rounded ${color.bg} ${color.text} border ${color.border}`}>{n.type === 'input' ? 'Source' : n.type}</div></div>
+              <div className="flex justify-between items-start gap-2"><h4 className="text-xs font-bold text-[#172B4D] uppercase leading-tight">{n.item.name || n.item.title}</h4><div className={`text-[9px] font-black uppercase px-1 py-0.5 rounded ${color.bg} ${color.text} border ${color.border}`}>{n.type === 'input' ? 'Source' : n.type}</div></div>
               <div className="flex items-center justify-between border-t border-[#F4F5F7] pt-1.5 mt-1.5"><span className="text-[9px] font-bold text-[#5E6C84] uppercase">{n.level}</span></div>
             </div>
           </div>
@@ -398,16 +385,66 @@ const LevelGrid: React.FC<any> = ({ level, model, selection, setSelection, addIt
     { label: 'Rituals', type: 'ritual' as PillarType, items: model.rituals.filter((r: any) => r.level === level.id) },
     { label: 'Active Work', type: 'work' as PillarType, items: model.workItems.filter((w: any) => w.level === level.id && w.type !== 'input') },
   ];
+
+  const findEntity = (id: string) => {
+    const team = model.teams.find(t => t.id === id);
+    if (team) return { ...team, category: 'team' as TargetCategory };
+    const ritual = model.rituals.find(r => r.id === id);
+    if (ritual) return { ...ritual, category: 'ritual' as TargetCategory };
+    const work = model.workItems.find(w => w.id === id);
+    if (work) return { ...work, category: work.type === 'input' ? 'input' as TargetCategory : 'work' as TargetCategory };
+    return null;
+  };
+
+  const getEntityTitle = (id: string) => {
+    const ent = findEntity(id);
+    if (!ent) return 'Unknown Entity';
+    return (ent as any).name || (ent as any).title;
+  };
+
+  const getConnectionInfo = (fromId: string, toId: string) => {
+    const from = findEntity(fromId);
+    const to = findEntity(toId);
+    if (!from || !to) return { label: 'Link', color: 'bg-[#EBECF0] text-[#42526E]', border: 'border-[#DFE1E6]' };
+    const fromLevel = LEVEL_WEIGHTS[from.level];
+    const toLevel = LEVEL_WEIGHTS[to.level];
+    if (from.category === 'input') return { label: 'Signal', color: 'bg-[#FFF0B3] text-[#974F0C]', border: 'border-[#FFE380]' };
+    if (to.category === 'ritual') return { label: 'Processing', color: 'bg-[#E6FCFF] text-[#006575]', border: 'border-[#00B8D9]' };
+    if (fromLevel < toLevel) return { label: 'Flow Down', color: 'bg-[#EAE6FF] text-[#403294]', border: 'border-[#D2CCFF]' };
+    if (fromLevel > toLevel) return { label: 'Roll Up', color: 'bg-[#FFEBE6] text-[#BF2600]', border: 'border-[#FFBDAD]' };
+    return { label: 'Horizontal', color: 'bg-[#DEEBFF] text-[#0747A6]', border: 'border-[#B3D4FF]' };
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4"><span className={`w-2.5 h-2.5 rounded-full ${TIER_DOT_COLORS[level.id as LevelId]}`} /><h2 className="text-xs font-bold text-[#5E6C84] uppercase tracking-widest">{level.label} Tier</h2><div className="h-px flex-1 bg-[#DFE1E6]" /></div>
       <div className="grid grid-cols-4 gap-6">{pillars.map(pillar => (
         <div key={pillar.label} className="bg-[#EBECF0]/40 rounded border border-[#DFE1E6] p-4 space-y-4 min-h-[160px] flex flex-col shadow-sm">
-          <div className="flex items-center justify-between"><h3 className="text-[11px] font-bold uppercase text-[#5E6C84] tracking-wider">{pillar.label}</h3><button onClick={() => addItem(level.id, pillar.type)} className="w-7 h-7 rounded bg-white border border-[#DFE1E6] flex items-center justify-center shadow-sm">+</button></div>
+          <div className="flex items-center justify-between"><h3 className="text-[11px] font-bold uppercase text-[#5E6C84] tracking-wider">{pillar.label}</h3><button onClick={() => addItem(level.id, pillar.type)} className="w-7 h-7 rounded bg-white border border-[#DFE1E6] flex items-center justify-center shadow-sm text-gray-500 hover:text-blue-600 transition-colors font-bold">+</button></div>
           <div className="space-y-4 flex-1">
-            {pillar.items.map((item: any) => (
-              <JiraCard key={item.id} item={item} type={pillar.type} isSelected={selection?.id === item.id} connectionsCount={model.connections.filter((c: any) => c.from === item.id || c.to === item.id).length} onSelect={() => setSelection({ type: pillar.type as any, id: item.id })} />
-            ))}
+            {pillar.items.map((item: any) => {
+              const connections = model.connections
+                .filter((c: any) => c.from === item.id)
+                .map(c => {
+                  const target = findEntity(c.to);
+                  return {
+                    targetName: getEntityTitle(c.to),
+                    targetCategory: target?.category,
+                    ...getConnectionInfo(c.from, c.to)
+                  };
+                });
+              return (
+                <JiraCard 
+                  key={item.id} 
+                  item={item} 
+                  type={pillar.type} 
+                  isSelected={selection?.id === item.id} 
+                  connections={connections}
+                  onSelect={() => setSelection({ type: pillar.type as any, id: item.id })} 
+                />
+              );
+            })}
+            {pillar.items.length === 0 && <div className="p-4 border border-dashed rounded flex items-center justify-center opacity-30 text-[9px] font-bold uppercase">Empty</div>}
           </div>
         </div>
       ))}</div>
@@ -415,20 +452,56 @@ const LevelGrid: React.FC<any> = ({ level, model, selection, setSelection, addIt
   );
 };
 
-const JiraCard: React.FC<any> = ({ item, type, isSelected, onSelect, connectionsCount }) => {
+const JiraCard: React.FC<any> = ({ item, type, isSelected, onSelect, connections }) => {
   const color = TYPE_COLORS[type] || TYPE_COLORS.work;
   return (
     <div onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`bg-white border rounded shadow-sm transition-all duration-200 cursor-pointer flex flex-col relative overflow-hidden ${isSelected ? 'border-[#4C9AFF] ring-2 ring-[#4C9AFF]/20 z-20 shadow-md translate-y-[-2px]' : 'border-[#DFE1E6] hover:bg-[#FAFBFC]'}`}>
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${color.accent}`} />
       <div className="p-4 pl-5 space-y-4">
-        <div className="flex justify-between items-start gap-2"><span className="text-sm font-bold text-[#172B4D] uppercase truncate leading-tight">{item.name || item.title}</span><div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${color.bg} ${color.text} border ${color.border}`}>{type === 'input' ? 'Source' : type}</div></div>
-        {(item.members || item.participants)?.length > 0 && <div className="flex flex-wrap gap-1.5">{(item.members || item.participants).map((m: string, idx: number) => <span key={idx} className="text-[10px] font-bold bg-[#EBECF0] text-[#172B4D] px-2 py-1.5 rounded uppercase border border-[#DFE1E6]">{m}</span>)}</div>}
-        {type === 'input' && <div className="flex items-center gap-2 bg-[#FFFAE6]/50 p-1.5 rounded border border-[#FFF0B3]/50"><span className="text-[9px] font-black text-[#974F0C] uppercase tracking-widest opacity-60">Origin</span><span className="text-[10px] font-black text-[#974F0C] uppercase truncate bg-[#FFF0B3] px-2 py-0.5 rounded border border-[#FFE380]">{item.source || 'External Signal'}</span></div>}
+        <div className="flex justify-between items-start gap-2"><span className="text-sm font-bold text-[#172B4D] uppercase leading-tight line-clamp-2">{item.name || item.title}</span><div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded shrink-0 ${color.bg} ${color.text} border ${color.border}`}>{type === 'input' ? 'Source' : type}</div></div>
+        
+        {(item.members || item.participants)?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {(item.members || item.participants).slice(0, 3).map((m: string, idx: number) => (
+              <span key={idx} className="text-[10px] font-bold bg-[#EBECF0] text-[#172B4D] px-2 py-1.5 rounded uppercase border border-[#DFE1E6]">
+                {m}
+              </span>
+            ))}
+            {(item.members || item.participants).length > 3 && (
+              <span className="text-[10px] font-bold text-gray-400 py-1 px-1">+{(item.members || item.participants).length - 3}</span>
+            )}
+          </div>
+        )}
+
+        {connections && connections.length > 0 && (
+          <div className="space-y-1.5 pt-2 border-t border-[#F4F5F7]">
+            <div className="text-[8px] font-black text-[#7A869A] uppercase tracking-widest">Active Links</div>
+            <div className="space-y-1.5">
+              {connections.slice(0, 3).map((conn: any, idx: number) => {
+                const targetColor = TYPE_COLORS[conn.targetCategory] || TYPE_COLORS.work;
+                return (
+                  <div key={idx} className="flex items-center gap-1.5 group/link">
+                    <span className={`text-[7px] font-black uppercase tracking-tighter px-1 rounded border leading-none py-0.5 shrink-0 ${conn.color} ${conn.border}`}>
+                      {conn.label}
+                    </span>
+                    <span className={`text-[7px] font-black uppercase tracking-tighter px-1 rounded border leading-none py-0.5 shrink-0 ${targetColor.bg} ${targetColor.text} ${targetColor.border}`}>
+                      {conn.targetCategory === 'input' ? 'Source' : conn.targetCategory}
+                    </span>
+                    <span className="text-[9px] font-bold text-[#172B4D] uppercase truncate flex-1 leading-none">{conn.targetName}</span>
+                  </div>
+                );
+              })}
+              {connections.length > 3 && (
+                <div className="text-[8px] font-bold text-[#0052CC] uppercase">+{connections.length - 3} more links</div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between pt-2 border-t border-[#F4F5F7]">
-           {connectionsCount > 0 && <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#EBECF0] text-[#42526E] border border-[#DFE1E6]"><svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg><span className="text-[9px] font-black">{connectionsCount}</span></div>}
            <div className="flex items-center gap-2">
-             {item.ritualFrequency && <span className="text-[11px] font-black text-[#0052CC] uppercase">{item.ritualFrequency}</span>}
-             {item.teamType && <span className="text-[10px] font-black text-[#403294] uppercase bg-[#EAE6FF] px-2 py-0.5 rounded border border-[#D2CCFF]">{item.teamType}</span>}
+             {item.ritualFrequency && <span className="text-[11px] font-black text-[#0052CC] uppercase tracking-wider">{item.ritualFrequency}</span>}
+             {item.teamType && <span className="text-[10px] font-black text-[#403294] uppercase bg-[#EAE6FF] px-2 py-0.5 rounded border border-[#D2CCFF]">{item.teamType.split('-')[0]}</span>}
            </div>
         </div>
       </div>
