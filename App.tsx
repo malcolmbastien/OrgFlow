@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { WorkflowModel, Team, LevelId, Connection, Ritual, WorkItem } from './types';
+import { WorkflowModel, Team, LevelId, Connection, Ritual, WorkItem, TeamType } from './types';
 import { INITIAL_MODEL, ORG_LEVELS } from './constants';
 
 type ViewMode = 'architect' | 'connectivity';
@@ -25,6 +25,15 @@ const LEVEL_WEIGHTS: Record<LevelId, number> = {
   'portfolio': 1,
   'team': 2
 };
+
+const TEAM_TYPES: { value: TeamType; label: string }[] = [
+  { value: 'stream-aligned', label: 'Stream-Aligned' },
+  { value: 'enabling', label: 'Enabling' },
+  { value: 'complicated-subsystem', label: 'Complicated Subsystem' },
+  { value: 'platform', label: 'Platform' },
+];
+
+const RITUAL_FREQUENCIES = ['Daily', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 
 const App: React.FC = () => {
   const [model, setModel] = React.useState<WorkflowModel>(INITIAL_MODEL);
@@ -193,6 +202,36 @@ const App: React.FC = () => {
                     onChange={(e) => updateItem(selectedItem.id, { [(selectedItem as any).name !== undefined ? 'name' : 'title']: e.target.value })}
                    />
                 </div>
+
+                {selection.type === 'team' && (
+                  <div>
+                    <label className="text-[11px] font-bold text-[#5E6C84] mb-1.5 block uppercase tracking-wider">Team Type</label>
+                    <select 
+                      className="w-full bg-[#FAFBFC] border border-[#DFE1E6] rounded p-2.5 text-sm font-medium text-[#172B4D] focus:bg-white focus:border-[#4C9AFF] outline-none transition-all shadow-sm"
+                      value={(selectedItem as Team).teamType || 'stream-aligned'}
+                      onChange={(e) => updateItem(selectedItem.id, { teamType: e.target.value })}
+                    >
+                      {TEAM_TYPES.map(type => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {selection.type === 'ritual' && (
+                  <div>
+                    <label className="text-[11px] font-bold text-[#5E6C84] mb-1.5 block uppercase tracking-wider">Ritual Frequency</label>
+                    <select 
+                      className="w-full bg-[#FAFBFC] border border-[#DFE1E6] rounded p-2.5 text-sm font-medium text-[#172B4D] focus:bg-white focus:border-[#4C9AFF] outline-none transition-all shadow-sm"
+                      value={(selectedItem as Ritual).ritualFrequency || 'Weekly'}
+                      onChange={(e) => updateItem(selectedItem.id, { ritualFrequency: e.target.value })}
+                    >
+                      {RITUAL_FREQUENCIES.map(freq => (
+                        <option key={freq} value={freq}>{freq}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {(selection.type === 'team' || selection.type === 'ritual') && (
                   <div className="space-y-3">

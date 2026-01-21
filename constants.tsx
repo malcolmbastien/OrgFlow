@@ -46,12 +46,21 @@ export const INITIAL_MODEL: WorkflowModel = {
   ],
   rituals: [
     { 
+      id: 'r_strat_sync', 
+      title: 'Strategic Sync', 
+      level: 'strategic', 
+      participants: ['CEO', 'Board'],
+      agendaItems: ['Market shifts', 'Funding'],
+      ritualFrequency: 'Monthly',
+      owningTeamId: 't1'
+    },
+    { 
       id: 'r_port_rev', 
       title: 'Portfolio Review', 
       level: 'portfolio', 
       participants: ['VPs', 'Directors', 'Scrum Masters'],
       agendaItems: ['Review releases', 'Risk assessment'],
-      ritualFrequency: 'Weekly',
+      ritualFrequency: 'Bi-Weekly',
       owningTeamId: 't2'
     },
     { 
